@@ -1,0 +1,3 @@
+decide the granularity of our analysis: should we take the Eyelink-defined saccades and fixations or compute velocity/acceleration thresholds ourselves and allow users to adjust this?
+
+if the former, i have code that scrapes the events from the eyelink and can then process it
