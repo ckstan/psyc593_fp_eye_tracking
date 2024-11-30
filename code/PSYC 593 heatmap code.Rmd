@@ -1,0 +1,208 @@
+---
+title: "PSYC 593 final project"
+author: "Huiyu Ding, Howard Tan, Hector Shi"
+date: "2024-11-29"
+output: html_document
+---
+
+prepare and clean files (here only looking at exp1 free view data)
+```{r setup_data}
+
+library(tidyverse)
+library(ggplot2)
+library(gghalves)
+library(rprojroot) 
+library(here) 
+
+### Path variables ----
+
+here_path <- here::here()
+docs_path <- here::here("doc")           # Using here
+data_path <- file.path(here_path, "data")
+raw_data_path <- file.path(data_path, "raw")
+processed_data_path <- file.path(data_path, "processed")
+figures_path <- file.path(here_path, "results","figures")
+heatmaps_path <- file.path(here_path, "results","heatmaps")
+background_image_path <- file.path(raw_data_path, "howard_dataset", "screenshots", "exp1")
+
+#read in raw file
+data_fv <- read.csv(file.path(processed_data_path,"exp1_freeview.csv")) %>%
+  dplyr::rename(trial = "TrialNumber",
+         subject = "participant",
+         condition1_dnum = "num_distractors",
+         condition2_sid = "singleton_id") %>%
+  dplyr::select(trial,subject, condition1_dnum, condition2_sid, f1:f9)
+
+data_search <- read.csv(file.path(processed_data_path,"exp1_search.csv")) %>%
+  dplyr::rename(trial = "TrialNumber",
+         subject = "participant",
+         condition1_dnum = "num_distractors",
+         condition2_sid = "singleton_id") %>%
+  dplyr::select(trial,subject, condition1_dnum, condition2_sid, f1:f8)
+
+# extract only the last four numbers in the raw fixation data
+extract_last_four_numeric <- function(cell) {
+  # Remove outer square brackets
+  cell <- gsub("^\\[|\\]$", "", cell)
+  
+  # Split by commas
+  parts <- str_split(cell, ",\\s*")[[1]]
+  
+  # Extract last four elements
+  last_four <- tail(parts, 4)
+  
+  # Clean up residual quotes and convert to numeric
+  last_four <- as.numeric(gsub("'", "", last_four))
+  
+  return(last_four)
+}
+
+# Apply cleaning to each column
+cleaned_data_fv <- data_fv %>%
+  mutate(across(everything(), ~ map(.x, extract_last_four_numeric))) %>% 
+  group_by(trial,subject) %>%
+  pivot_longer(values_to = "fix", names_to = "fix_num", 5:13) %>%
+  mutate(fix = gsub("^c\\(|\\)$", "", fix)) %>%
+  filter(fix != "NA") %>%
+  separate(fix, into = c("x", "y", "duration", "onset"), sep = ",\\s*", convert = TRUE) %>%
+  mutate(subject = as.numeric(subject),
+         trial = as.numeric(trial))
+
+cleaned_data_search <- data_search %>%
+  mutate(across(everything(), ~ map(.x, extract_last_four_numeric))) %>% 
+  group_by(trial,subject) %>%
+  pivot_longer(values_to = "fix", names_to = "fix_num", 5:12) %>%
+  mutate(fix = gsub("^c\\(|\\)$", "", fix)) %>%
+  filter(fix != "NA") %>%
+  separate(fix, into = c("x", "y", "duration", "onset"), sep = ",\\s*", convert = TRUE) %>%
+  mutate(subject = as.numeric(subject),
+         trial = as.numeric(trial))
+
+```
+
+function for heat map and ordinal fixations
+```{r heatmap_function}
+
+library(MASS)
+library(ggtern) # for Gaussian kernal calculation
+library(grid)
+library(png)
+library(ggimage) #package for image as background
+
+heatmap_function <- function(data, subject_num, trial_num) {
+  
+  pattern <- paste0("*_trialnum_", trial_num, ".png")
+  
+  image_files <- list.files(path = background_image_path, 
+                           pattern = pattern,
+                           recursive = TRUE,  # search in subdirectories
+                           full.names = TRUE) # get full path
+  
+  # Take the first matching file (assuming there's only one per trial number)
+  image_path <- image_files[1]
+  image <- png::readPNG(image_path)
+
+  heatmap_df <- data %>% 
+    filter(trial == trial_num) %>%
+    filter(subject == subject_num)
+
+    
+  if (nrow(heatmap_df) == 0) {
+    stop("No data available for this subject and trial.")
+   }
+  
+  # !!!!!!!! maybe no need to weight duration? !!!!!!!!!!!!!!!!!!!!!!
+  
+  # Compute bandwidth dynamically
+  # bandwidth <- c(sd(heatmap_df$x) * 0.5, sd(heatmap_df$y) * 0.5)
+  # kde_result <- with(heatmap_df, kde2d.weighted(x, y, w = duration, h = bandwidth, n = 100, lims = c(range(0,1920), range(0,1080))))
+  # 
+  # # Convert the KDE output to a dataframe for ggplot2
+  # kde_df <- data.frame(
+  #   x = rep(kde_result$x, each = length(kde_result$y)),
+  #   y = rep(kde_result$y, times = length(kde_result$x)),
+  #   density = as.vector(kde_result$z)
+  # )
+  
+  # plot the graph
+  graph <- ggplot(heatmap_df, aes(x = x, y = y, fill = density)) +
+    # background_image(image)+
+    annotation_custom(
+      rasterGrob(image, width = unit(1, "npc"), height = unit(1, "npc")), 
+      xmin = 0, xmax = 1920, ymin = 0, ymax = 1080
+    ) +
+    theme_minimal() +
+    stat_density2d(aes(x = x, y =y, fill = ..level.., alpha = ..level.., weight = duration), 
+                   size= 1, bins= 10, geom='polygon') +
+    scale_alpha(range = c(0, 0.1), guide = "none") +  # Set alpha scale; 0 for no density
+    scale_fill_gradient(low = "green", high = "red", guide = "none") +    
+    labs(title = "Fixation Heatmap", x = "X Coordinate", y = "Y Coordinate") +
+    theme_minimal() +
+    geom_rect(aes(xmin = 0, xmax = 1920, ymin = 0, ymax = 1080), fill = NA, color = "black", size = 1) +
+    scale_x_continuous(breaks = seq(0, 1920, by = 480), limits = c(0, 1920)) + 
+    scale_y_continuous(breaks = seq(0, 1080, by = 360), limits = c(0, 1080)) +   
+    theme(panel.grid = element_blank(),  
+          panel.border = element_blank(),
+          plot.title = element_text(hjust = 0.5)) +
+    ggtitle(paste("Heatmap for subject",subject_num, "trial",trial_num,
+                  "\n","# of distractors:",data$condition1_dnum,"and singleton condition",data$condition2_sid))
+  
+  return(graph)
+}
+
+fixation_order_function <- function(data, subject_num, trial_num) {
+  
+  # Construct the background image file path
+
+  pattern <- paste0("*_trialnum_", trial_num, ".png")
+  
+  image_files <- list.files(path = background_image_path, 
+                           pattern = pattern,
+                           recursive = TRUE,  # search in subdirectories
+                           full.names = TRUE) # get full path
+  
+  # Take the first matching file (assuming there's only one per trial number)
+  image_path <- image_files[1]
+  image <- png::readPNG(image_path)
+  
+  fixation_df <- data %>% 
+    filter(trial == trial_num) %>%
+    filter(subject == subject_num) %>%
+    group_by(subject,trial) %>%
+    mutate(order = row_number())
+  
+  if (nrow(fixation_df) == 0) {
+    stop("No data available for this subject and trial.")
+   }
+  
+  # plot the graph
+  graph <- ggplot(fixation_df, aes(x = x, y = y)) +
+    theme_minimal() +
+    annotation_custom(rasterGrob(image, width = unit(1, "npc"), height = unit(1, "npc")), 
+      xmin = 0, xmax = 1920, ymin = 0, ymax = 1080) +
+    theme_minimal() +
+    geom_path(arrow = arrow(type = "closed", length = unit(0.2, "cm")), color = "orange", size = 1) +
+    geom_point(size = 8, shape = 21, fill = "red", color = "red") +  # Circles for fixations
+    geom_text(aes(label = order), color = "white", size = 4, fontface = "bold", vjust = 0.5) +  # Numbers inside circles
+    labs(title = "Fixation Plot", x = "X Coordinate", y = "Y Coordinate") +
+    scale_x_continuous(limits = c(0, 1920), expand = c(0, 0)) +
+    scale_y_continuous(limits = c(0, 1080), expand = c(0, 0)) +
+    coord_fixed() +  # Keep the aspect ratio of the image
+    theme_minimal() +
+    theme(
+      panel.grid = element_blank(),  
+      panel.border = element_blank(),
+      plot.title = element_text(hjust = 0.5)
+    ) +
+    ggtitle(paste("Fixation plot for subject",subject_num, "trial",trial_num,
+                  "\n","# of distractors:",data$condition1_dnum[1],"and singleton condition",data$condition2_sid[1]))
+  
+  return(graph)
+}
+
+## Howard: plotting search makes it pretty clear that you need to transform the x and y axes to go in the same coordinate system
+## Howard: please also add in ability to select multiple participants for the heatmap_function
+heatmap_function(cleaned_data_search, 8, 55)
+fixation_order_function(cleaned_data_search, 8, 58)
+```
+
