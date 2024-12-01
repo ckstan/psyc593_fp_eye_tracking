@@ -1,0 +1,292 @@
+---
+title: "Heatmap"
+subtitle: "PSYC 593 group project"
+format:
+  html: default
+date: today
+author: "Howard Tan, Huiyu Ding, Hector Shi"
+output:
+  tufte::tufte_html: 
+    self_contained: true
+---
+
+## Introduction:
+
+The visual world is remarkably complex and often overwhelming in terms of the information it presents. Much of how we interact with our surroundings is based on visual information processing, which leads to distinct patterns of viewing behavior aimed at quickly and efficiently interpreting the environment. Due to the anatomical limitation of the retina, which restricts high-acuity vision to the fovea, we must constantly move our eyes to capture detailed visual information. These movements involve shifting foveal attention multiple times per second, where detailed data is acquired, punctuated by saccadic jumps between fixations. Research has consistently shown that eye movement can be influenced by both bottom-up processes (e.g., our natural tendency to focus on bright or moving stimuli) and top-down processes like how our current goals may guide our eye movements in a task like visual search (e.g. Yarbus, 1967; Castelhano et al., 2009; Loftus & Mackworth, 1978). The importance of these findings has led to an increased interest in using eye-tracking as a powerful tool in cognitive science research.
+
+Eye movement data offer distinct advantages over brain imaging techniques and basic behavioral statistics. Eye-tracking is relatively easy to implement, more affordable than imaging methods, and provides valuable additional insights into cognitive processes such as memory (e.g., Hannula et al., 2010) and attention (e.g. Awh et al., 2012; van Zoest et al., 2004). In typical eye-tracking studies, participants sit in front of a display while their eye movements are recorded by a head-mounted or desk-mounted eye-tracker. The recorded eye movements are then mapped to the task the participant is performing, allowing for detailed analyses of time-sensitive viewing behavior and potential indices of underlying cognitive processes. Eye-tracking data typically consists of time-point samples which contain gaze coordinates (usually represented by x and y positions in a 2D space mapped onto the display), and are later used to compute measures of interest like fixation duration and saccadic amplitudes (the distance the eyes travel during a saccade, measured in pixels or visual degrees). However, there are different thresholds to determine what constitutes a fixation and what constitutes a saccade depending on the study and the phenomenon one is trying to study. Additionally, typical psychophysics experiments contain trial data organized into rows, with variables measured contained in the columns, and researchers often have a need to combine the two datasets which are organized differently. Although several R packages, such as eyetrackingR and gazeR, have been designed to process eye movement datasets, many researchers still rely on custom code to perform data analysis and generate visualizations from their data. This can be challenging for researchers new to eye-tracking, as each visualization may take a long time to hand-craft and they may be unsure how to create visualizations that align with standards in the literature or effectively illustrate their findings.
+
+This leads to the main objective of our project:
+
+How should we visualize eye-tracking data? Given eye movements made throughout the time course of a trial, how do we display the data per image, per participant, per condition, per experiment? A key aspect of viewing behavior that has garnered significant attention is gaze or fixation patterns (e.g., Ramey et al., 2020; Wynn et al., 2019), which refer to sequences of fixations over a specified timeframe. First, the eye-tracking data is usually turned into a more usable format for researchers, which tends to be aggregated information about fixations and saccades that occurred within a trial. After that, the most common way to visualize these patterns is through fixation heatmaps, where we would map out the density map of fixations in a given trial, where areas receiving a larger number of fixations (weighted by the duration of the aggregated fixations) should be distinctively colored compared to areas receiving no or fewer number of fixations. Some tools, like the gazeR package, even incorporate fixation duration into the heatmap’s color scheme. However, while heatmaps are useful for showing the overall distribution of fixations, they do not convey the **temporal sequence** of fixations clearly, and so information about the scanpaths is also lost. One of the major goals of this project is to address this limitation by developing a streamlined pipeline in R code that goes from from loading raw eye-tracking data to generating clear, comprehensive visualizations of eye movement behavior (such as graphs on fixation statistics, saccadic dispersion, or in the case of temporal analyses, a short video that shows the sequences of fixations and their accompanying scanpaths).
+
+## Method:
+
+Eye movements were recorded with a SR-Research Eyelink 1000 Plus desktop mount eye-tracker sampling at 1000 Hz. Eye movement data was collected for either eye, or from both eyes. Saccades were pre- defined using the Eyelink 1000 Plus’s default velocity and acceleration thresholds (30°/s and 8000°/s2). Fixations were defined by Eyelink 1000 Plus’s default inter-saccade periods. In the code we develop, we would like to be able to change this variable and use the result in all subsequent analyses, in case other researchers have disagreements regarding what constitutes fixations and saccades (and microsaccades).
+
+The experimental stimuli were colored turtles facing either left or right, presented on a beach background (Figure 1). Stimuli were placed onto the display in a rectangular grid with jitter added. The beach background contained a wave in the center, and contained a water light reflection pattern on either the left or right side.
+
+For the purposes of evaluating the effectiveness of our heatmaps, we can compare two experimental conditions. There was a between-subjects manipulation of instruction (free-view, search) and subjects were randomly assigned to an instruction condition. Both instruction conditions received the same within-subject manipulations and the exact same generated search arrays. There were five set sizes for the less-salient purple turtles (0, 2, 4, 8, 16) and two salient turtle colors (yellow, green). The results showed drastic differences in first fixation statistics, as well as many eye-movement pattern measures, and we hope that these results will be reflected in the time-sequenced heatmaps we generate.
+
+Figure 1. *Example of Display Stimuli Used in Study* ![Figure1](figure1.png)
+
+*Note.* *Top panel.* Example of trial used in study. The screen was blank for a variable time at the beginning of a trial. A fixation cross would blink until the participant fixated on it for 300ms. The trial display was gaze contingent and, in the free-view condition, it remained visible for two seconds, whereas in the search condition, it remained visible until response or four seconds had elapsed. Bottom panel. Stimuli used in study.
+
+The eye-tracker was calibrated using a 3x3 spatial array before the experiment, and a single-point calibration (drift correct) occurred between every block of trials. We would like to include a check for calibration parameters and report subject average errors and group average errors.
+
+Subjects in the free-view condition were given the following instructions: “In this experiment, we are interested in studying how people explore images with their eyes. We will show you several images and we just want you to look around. We will record your eye movements so that we can study how you are exploring the images.”
+
+Subjects in the search condition were given the following instructions: “This experiment requires you to visually search for a target object and make a decision about it. The target you will be searching for is a red turtle. Your task is to decide towards which side the turtle’s head is facing, by pressing the LEFT or RIGHT ARROW key on the button box. And please try to respond as fast and as accurately as possible.” Before each trial was a solid color display that had the average color of the beach background, followed by a blinking fixation cross subjects had to fixate on in order to trigger the trial display. This meant that the first fixation made before the display appears is not informative, and should be excluded from analysis. Afterwards, the free-view display remained on screen for two seconds. The search display remained on screen for four seconds or until a response was made, whichever occurred earlier.
+
+## Variables:
+
+All the eye-tracking data are text files where a majority of the rows are a single time point containing information about the participants’ gaze at that time, regardless of what trial they were on. From this we will need to generate a list of fixations as well as saccades using any custom defined thresholds. Then given that list of eye movements made within a trial, we need to combine it to the main data file, where each row corresponds to an entire trial in its entirety. That is, we are grouping and collapsing the eye-tracking data into a more usable format for many kinds of research. From our main data file, we can overlay the fixation data onto screenshots of the stimuli to create heatmaps, since \~20 participants will have viewed the same image, so they will each contribute one sequence of fixations.
+
+## Plan of Analysis:
+
+From the data we collected from the data viewer, we will select the interested variables and conduct a classic table in which all the rows represent trials and columns represent variables, including fixations and saccades. We will compare how gaze behavior differs between the free-view and search conditions by looking at measures such as fixation duration, first fixation statistics, and saccadic movements from the table. By these analyses, we should be able to compare temporal gaze patterns with temporal sequence and scan path.
+
+Moreover, we will use these data to generate fixation heatmaps to help us better understand the density of fixation. This helps in visualizing where participants focused their gaze the most. We will use the GazeR package in R to help us differentiate the color by the duration of fixation. By overlaying heatmaps from different conditions, we might visually highlight differences in fixation density and focus areas between free-viewing and search tasks.
+
+## **Results:**
+
+#### Data processing
+
+```{r data_setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(gghalves)
+library(rprojroot) 
+library(here) 
+library(MASS)
+library(ggtern) #  Gaussian kernal calculation for heatmap
+library(grid)
+library(png)
+library(ggimage) #package for image as background
+
+### Path variables ----
+
+here_path <- here::here()
+docs_path <- here::here("doc")           # Using here
+data_path <- file.path(here_path, "data")
+raw_data_path <- file.path(data_path, "raw")
+processed_data_path <- file.path(data_path, "processed")
+figures_path <- file.path(here_path, "results","figures")
+heatmaps_path <- file.path(here_path, "results","heatmaps")
+background_image_path <- file.path(raw_data_path, "howard_dataset", "screenshots", "exp1")
+
+#read in raw file
+data_fv <- read.csv(file.path(processed_data_path,"exp1_freeview.csv")) %>%
+  dplyr::rename(trial = "original_TrialNum",
+         subject = "participant",
+         condition1_dnum = "num_distractors",
+         condition2_sid = "singleton_id") %>%
+  dplyr::select(trial,subject, condition1_dnum, condition2_sid, target_pos, singleton_pos, f1:f9)
+
+data_search <- read.csv(file.path(processed_data_path,"exp1_search.csv")) %>%
+  dplyr::rename(trial = "original_TrialNum",
+         subject = "participant",
+         condition1_dnum = "num_distractors",
+         condition2_sid = "singleton_id") %>%
+  dplyr::select(trial,subject, condition1_dnum, condition2_sid, target_pos, singleton_pos, f1:f8)
+
+# extract only the last four numbers in the raw fixation data
+extract_last_four_numeric <- function(cell) {
+  # Remove outer square brackets
+  cell <- gsub("^\\[|\\]$", "", cell)
+  
+  # Split by commas
+  parts <- str_split(cell, ",\\s*")[[1]]
+  
+  # Extract last four elements
+  last_four <- tail(parts, 4)
+  
+  # Clean up residual quotes and convert to numeric
+  last_four <- as.numeric(gsub("'", "", last_four))
+  
+  return(last_four)
+}
+
+# Apply cleaning to each column
+cleaned_data_fv <- data_fv %>%
+  mutate(across(everything(), ~ map(.x, extract_last_four_numeric))) %>% 
+  group_by(trial,subject) %>%
+  pivot_longer(values_to = "fix", names_to = "fix_num", f1:f9) %>%
+  mutate(fix = gsub("^c\\(|\\)$", "", fix),
+         target_pos = gsub("^c\\(|\\)$", "", target_pos),
+         singleton_pos = gsub("^c\\(|\\)$", "", singleton_pos)) %>%
+  filter(fix != "NA") %>%
+  separate(fix, into = c("x", "y", "duration", "onset"), sep = ",\\s*", convert = TRUE) %>%
+  separate(target_pos, into = c("target_x", "target_y"), sep = ",\\s*", convert = TRUE) %>%
+  separate(singleton_pos, into = c("singleton_x", "singleton_y"), sep = ",\\s*", convert = TRUE) %>%
+  mutate(subject = as.numeric(subject),
+         trial = as.numeric(trial)) %>%
+  mutate(y = 1080 - y,
+         target_y = 1080 - target_y)
+
+cleaned_data_search <- data_search %>%
+  mutate(across(everything(), ~ map(.x, extract_last_four_numeric))) %>% 
+  group_by(trial,subject) %>%
+  pivot_longer(values_to = "fix", names_to = "fix_num", f1:f8) %>%
+  mutate(fix = gsub("^c\\(|\\)$", "", fix),
+         target_pos = gsub("^c\\(|\\)$", "", target_pos),
+         singleton_pos = gsub("^c\\(|\\)$", "", singleton_pos))%>%
+  filter(fix != "NA") %>%
+  separate(fix, into = c("x", "y", "duration", "onset"), sep = ",\\s*", convert = TRUE) %>%
+  separate(target_pos, into = c("target_x", "target_y"), sep = ",\\s*", convert = TRUE) %>%
+  separate(singleton_pos, into = c("singleton_x", "singleton_y"), sep = ",\\s*", convert = TRUE) %>%
+  mutate(subject = as.numeric(subject),
+         trial = as.numeric(trial)) %>%
+  mutate(y = 1080 - y,
+        target_y = 1080 - target_y)
+
+
+```
+
+#### Basic viewing metrics (Howard's part)
+
+```{r}
+
+```
+
+#### Heat map and fixation map
+
+We coded two functions to generate a heat map and a fixation map against the actual image they saw during the experiment. Heatmap function takes in what trial we want to visualize and how many subjects we want to aggregate. Fixation function takes in which subject on which trial we want to visualize the ordinal order of fixations they made on that trial. We applied a Gaussian Kernel smoothing so that regions receiving greater fixations are assigned a warmer color. Across subjects, we clearly see that participants fixated on the target (highlighed) in the graph. Additionally, for each trial of each subject,
+
+```{r heatmap_fixation_map, warning = FALSE}
+# heat map function ________________________________________________________
+heatmap_function <- function(data, subject_num = NULL, trial_num = NULL) {
+  
+  if (is.null(subject_num)) {
+    subject_num <- unique(data$subject)
+  }
+  if (is.null(trial_num)) {
+    trial_num <- unique(data$trial)
+  }
+  
+  pattern <- paste0("*_trialnum_", trial_num, ".png")
+  
+  image_files <- list.files(path = background_image_path, 
+                           pattern = pattern,
+                           recursive = TRUE,  # search in subdirectories
+                           full.names = TRUE) # get full path
+  
+  # Take the first matching file (assuming there's only one per trial number)
+  image_path <- image_files[1]
+  image <- png::readPNG(image_path)
+  
+  # Filter data for the selected subject and trial
+  heatmap_df <- data %>% 
+    filter(subject %in% subject_num) %>% 
+    filter(trial %in% trial_num)
+  
+  target_x = unique(heatmap_df$target_x)
+  target_y = unique(heatmap_df$target_y)
+    
+  if (nrow(heatmap_df) == 0) {
+    stop("No data available for this subject and trial.")
+   }
+  
+  # plot the graph
+  graph <- ggplot(heatmap_df, aes(x = x, y = y, fill = density)) +
+    theme_minimal() +
+    annotation_custom(
+      rasterGrob(image, width = unit(1, "npc"), height = unit(1, "npc")), 
+      xmin = 0, xmax = 1920, ymin = 0, ymax = 1080) +
+    stat_density2d(aes(x = x, y =y, fill = ..level.., alpha = ..level.., 
+                       weight = duration), size= 1, bins= 10, geom='polygon') +
+    scale_alpha(range = c(0, 0.4), guide = "none") +
+    scale_fill_gradient(low = "green", high = "red", guide = "none") +    
+    labs(title = "Fixation Heatmap", x = "X Coordinate", y = "Y Coordinate") +
+    geom_rect(aes(xmin = 0, xmax = 1920, ymin = 0, ymax = 1080), 
+              fill = NA, color = "black", size = 1) +
+    scale_x_continuous(breaks = seq(0, 1920, by = 480), limits = c(0, 1920)) + 
+    scale_y_continuous(breaks = seq(0, 1080, by = 360), limits = c(0, 1080)) +   
+    theme(panel.grid = element_blank(),  
+          panel.border = element_blank(),
+          plot.title = element_text(hjust = 0.5)) +
+    ggtitle(paste("Heatmap for", "trial",trial_num,
+                  "\n","# of distractors:",data$condition1_dnum,
+                  "and singleton condition",data$condition2_sid)) +
+    geom_rect(data = heatmap_df, aes(xmin = target_x-20, xmax = target_x+20, 
+                                     ymin = target_y-20, ymax = target_y+20),
+              fill = NA, alpha = 0.2, color = "black", size = 1) +
+    annotate("text", x = target_x , y = target_y + 80, 
+             label = "target", size = 4, color = "black", fontface = "bold")
+    
+  
+  return(graph)
+}
+
+
+# graph the fixations made for specifed trial __________________________________
+fixation_order_function <- function(data, subject_num, trial_num) {
+  
+  # Construct the background image file path
+
+  pattern <- paste0("*_trialnum_", trial_num, ".png")
+  
+  image_files <- list.files(path = background_image_path, 
+                           pattern = pattern,
+                           recursive = TRUE,  # search in subdirectories
+                           full.names = TRUE) # get full path
+  
+  # Take the first matching file (assuming there's only one per trial number)
+  image_path <- image_files[1]
+  image <- png::readPNG(image_path)
+  
+  fixation_df <- data %>% 
+    filter(trial == trial_num) %>%
+    filter(subject == subject_num) %>%
+    group_by(subject,trial) %>%
+    mutate(order = row_number())
+  
+  target_x = unique(fixation_df$target_x)
+  target_y = unique(fixation_df$target_y)
+  
+  if (nrow(fixation_df) == 0) {
+    stop("No data available for this subject and trial.")
+   }
+  
+  # plot the graph
+  graph <- ggplot(fixation_df, aes(x = x, y = y)) +
+    theme_minimal() +
+    annotation_custom(rasterGrob(image, width = unit(1, "npc"), 
+                                 height = unit(1, "npc")), 
+                      xmin = 0, xmax = 1920, ymin = 0, ymax = 1080) +
+    geom_path(arrow = arrow(type = "closed", length = unit(0.2, "cm")), 
+              color = "orange", size = 1) +
+    geom_point(size = 8, shape = 21, fill = "red", color = "red", alpha = 0.5) +   
+    geom_text(aes(label = order), color = "white", size = 4, 
+              fontface = "bold", vjust = 0.5) + 
+    labs(title = "Fixation Plot", x = "X Coordinate", y = "Y Coordinate") +
+    scale_x_continuous(breaks = seq(0, 1920, by = 480), limits = c(0, 1920)) + 
+    scale_y_continuous(breaks = seq(0, 1080, by = 360), limits = c(0, 1080)) +   
+    coord_fixed() +  # Keep the aspect ratio of the image
+    geom_rect(aes(xmin = 0, xmax = 1920, ymin = 0, ymax = 1080), 
+              fill = NA, color = "black", size = 1) +
+    theme(panel.grid = element_blank(),  
+          panel.border = element_blank(),
+          plot.title = element_text(hjust = 0.5)) +
+    ggtitle(paste("Fixation plot for","trial",trial_num,
+                  "\n","# of distractors:",data$condition1_dnum[1],
+                  "and singleton condition",data$condition2_sid[1])) +
+    geom_rect(aes(xmin = target_x-20, xmax = target_x+20, 
+                  ymin = target_y-20, ymax = target_y+20), 
+                  fill = NA, alpha = 0.2, color = "black", size = 1) +
+    annotate("text", x = target_x , y = target_y + 80, label = "target", 
+             size = 4, color = "black", fontface = "bold")
+  
+  return(graph)
+}
+
+heatmap_graph <- heatmap_function(cleaned_data_search, trial_num = 55)
+fixation_graph <- fixation_order_function(cleaned_data_search, subject_num = 1, trial_num = 88)
+```
+
+Here, we showed two examples for heat maps and fixation maps generated by the functions.
+
+```{r graphs, warning=FALSE}
+heatmap_graph
+fixation_graph
+```
