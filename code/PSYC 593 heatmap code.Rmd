@@ -20,6 +20,7 @@ here_path <- here::here()
 docs_path <- here::here("doc")           # Using here
 data_path <- file.path(here_path, "data")
 raw_data_path <- file.path(data_path, "raw")
+eyetracking_fv_data_path <- file.path(raw_data_path, "howard_dataset","eye_tracking", "freeview")
 processed_data_path <- file.path(data_path, "processed")
 figures_path <- file.path(here_path, "results","figures")
 heatmaps_path <- file.path(here_path, "results","heatmaps")
@@ -353,6 +354,74 @@ fixation_graph <- fixation_order_function(cleaned_data_search, 1, 15)
 
 heatmap_graph
 fixation_graph
+```
+```{r video creation}
+library(eyelinker)
+
+# read in data
+et_data <- read.asc(file.path(eyetracking_fv_data_path, "EXP1_freeview_15_2023_02_11_15_04.asc"), parse_all = TRUE)
+
+#subset messages and denote trial boundaries
+msgs <- et_data$msg
+
+# first 12 pairs are practice trials, so block > 24
+trial_bounds <- msgs %>% 
+                  filter((text == "stimuli_onset" | text == "freeview_timeup") & block > 24) 
+
+#assign trial_id to original raw data, and drop info outside of trials, 
+#e.g. we do a gaze contingency check in the beginning of every trial 
+make_trials <- function(eyetrack_data, bounds) {
+  
+  bounds <- bounds %>%
+              group_by(block) %>%
+              pivot_wider(names_from = text, values_from = time) %>%
+              ungroup() %>%
+              mutate(id = row_number()) %>%
+              select(id, stimuli_onset, freeview_timeup)
+  
+
+  trials <- eyetrack_data %>%
+    mutate(trial_id = NA_integer_)
+  
+  for(i in 1:nrow(bounds)) {
+    
+    # Assign trial_id where time falls within window
+    trials <- trials %>%
+      mutate(
+        trial_id = ifelse(
+          time >= bounds$stimuli_onset[i] & 
+          time <= bounds$freeview_timeup[i],
+          bounds$id[i],
+          trial_id
+        )
+      )
+  }
+  trials <- trials %>%
+              drop_na(trial_id)
+  
+  return(trials)
+  
+}
+
+# make trial dataframe 
+trials_df <- make_trials(et_data$raw, trial_bounds) %>%
+              dplyr::select(time, xp, yp, trial_id)
+              
+
+
+# do one trial, and sample timepoints every 50 rows
+trials_df <- subset(trials_df, trial_id == 1)%>%
+                filter(row_number() %% 50 == 0)
+
+ggplot() +
+  geom_path(data = trials_df, aes(x = xp, y = yp), size = 0.5, color = "firebrick2") +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, et_data$info$screen.x)) +
+  scale_y_reverse(expand = c(0, 0), limits = c(et_data$info$screen.y, 0)) +
+  labs(x = "x-axis (pixels)", y = "y-axis (pixels)") +
+  coord_fixed() # Keeps aspect ratio from getting distorted
+
+
+
 ```
 
 
