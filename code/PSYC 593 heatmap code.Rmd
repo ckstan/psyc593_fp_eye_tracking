@@ -29,17 +29,19 @@ background_image_path <- file.path(raw_data_path, "howard_dataset", "screenshots
 #read in raw file
 data_fv <- read.csv(file.path(processed_data_path,"exp1_freeview.csv")) %>%
   dplyr::rename(trial = "original_TrialNum",
+         p_trial = "TrialNumber",       
          subject = "participant",
          condition1_dnum = "num_distractors",
          condition2_sid = "singleton_id") %>%
-  dplyr::select(trial,subject, condition1_dnum, condition2_sid, target_pos, singleton_pos, f1:f9)
+  dplyr::select(trial,subject, condition1_dnum, condition2_sid, target_pos, singleton_pos, f1:f9, p_trial)
 
 data_search <- read.csv(file.path(processed_data_path,"exp1_search.csv")) %>%
   dplyr::rename(trial = "original_TrialNum",
+         p_trial = "TrialNumber",
          subject = "participant",
          condition1_dnum = "num_distractors",
          condition2_sid = "singleton_id") %>%
-  dplyr::select(trial,subject, condition1_dnum, condition2_sid, target_pos, singleton_pos, f1:f8)
+  dplyr::select(trial,subject, condition1_dnum, condition2_sid, target_pos, singleton_pos, f1:f8, p_trial)
 
 # extract only the last four numbers in the raw fixation data
 extract_last_four_numeric <- function(cell) {
@@ -71,7 +73,8 @@ cleaned_data_fv <- data_fv %>%
   separate(target_pos, into = c("target_x", "target_y"), sep = ",\\s*", convert = TRUE) %>%
   separate(singleton_pos, into = c("singleton_x", "singleton_y"), sep = ",\\s*", convert = TRUE) %>%
   mutate(subject = as.numeric(subject),
-         trial = as.numeric(trial)) %>%
+         trial = as.numeric(trial),
+         p_trial = as.numeric(p_trial)) %>%
   mutate(y = 1080 - y,
          target_y = 1080 - target_y,
          singleton_y = 1080 - singleton_y)
@@ -89,7 +92,8 @@ cleaned_data_search <- data_search %>%
   separate(target_pos, into = c("target_x", "target_y"), sep = ",\\s*", convert = TRUE) %>%
   separate(singleton_pos, into = c("singleton_x", "singleton_y"), sep = ",\\s*", convert = TRUE) %>%
   mutate(subject = as.numeric(subject),
-         trial = as.numeric(trial)) %>%
+         trial = as.numeric(trial),
+         p_trial = as.numeric(p_trial)) %>%
   mutate(y = 1080 - y,
          target_y = 1080 - target_y,
          singleton_y = 1080 - singleton_y)
@@ -349,24 +353,31 @@ fixation_order_function <- function(data, subject_num, trial_num) {
 graph heatmap and fixations
 ```{r graphs}
 # if no input for subject_num, graph all subjects
-heatmap_graph <- heatmap_function(cleaned_data_search, trial_num = 23)
-fixation_graph <- fixation_order_function(cleaned_data_search, 1, 15)
+heatmap_graph <- heatmap_function(cleaned_data_fv, 36, trial_num = 25)
+#fixation_graph <- fixation_order_function(cleaned_data_fv, 1, 15)
 
 heatmap_graph
-fixation_graph
+#fixation_graph
 ```
 ```{r video creation}
 library(eyelinker)
+library(MASS)
+library(ggtern) #  Gaussian kernal calculation for heatmap
+library(grid)
+library(png)
+library(gganimate) # Animation
+library(ggthemes) # ggplot2 theme for maps
+library(ggimage) # Images in ggplot2 plots
 
 # read in data
-et_data <- read.asc(file.path(eyetracking_fv_data_path, "EXP1_freeview_15_2023_02_11_15_04.asc"), parse_all = TRUE)
+et_data <- read.asc(file.path(eyetracking_fv_data_path, "EXP1_freeview_36_2023_05_02_10_55.asc"), parse_all = TRUE)
 
 #subset messages and denote trial boundaries
 msgs <- et_data$msg
 
 # first 12 pairs are practice trials, so block > 24
 trial_bounds <- msgs %>% 
-                  filter((text == "stimuli_onset" | text == "freeview_timeup") & block > 24) 
+                  dplyr::filter((text == "stimuli_onset" | text == "freeview_timeup") & block > 24) 
 
 #assign trial_id to original raw data, and drop info outside of trials, 
 #e.g. we do a gaze contingency check in the beginning of every trial 
@@ -377,7 +388,7 @@ make_trials <- function(eyetrack_data, bounds) {
               pivot_wider(names_from = text, values_from = time) %>%
               ungroup() %>%
               mutate(id = row_number()) %>%
-              select(id, stimuli_onset, freeview_timeup)
+              dplyr::select(id, stimuli_onset, freeview_timeup)
   
 
   trials <- eyetrack_data %>%
@@ -405,22 +416,103 @@ make_trials <- function(eyetrack_data, bounds) {
 
 # make trial dataframe 
 trials_df <- make_trials(et_data$raw, trial_bounds) %>%
-              dplyr::select(time, xp, yp, trial_id)
+              dplyr::select(time, xp, yp, trial_id) %>%
+              mutate (yp = 1080-yp)
               
 
 
-# do one trial, and sample timepoints every 50 rows
-trials_df <- subset(trials_df, trial_id == 1)%>%
-                filter(row_number() %% 50 == 0)
-
-ggplot() +
-  geom_path(data = trials_df, aes(x = xp, y = yp), size = 0.5, color = "firebrick2") +
-  scale_x_continuous(expand = c(0, 0), limits = c(0, et_data$info$screen.x)) +
-  scale_y_reverse(expand = c(0, 0), limits = c(et_data$info$screen.y, 0)) +
-  labs(x = "x-axis (pixels)", y = "y-axis (pixels)") +
-  coord_fixed() # Keeps aspect ratio from getting distorted
 
 
+# ggplot() +
+#   geom_path(data = trials_df, aes(x = xp, y = yp), size = 0.5, color = "firebrick2") +
+#   scale_x_continuous(expand = c(0, 0), limits = c(0, et_data$info$screen.x)) +
+#   scale_y_reverse(expand = c(0, 0), limits = c(et_data$info$screen.y, 0)) +
+#   labs(x = "x-axis (pixels)", y = "y-axis (pixels)") +
+#   coord_fixed() # Keeps aspect ratio from getting distorted
+
+
+# now make a video for a particular trial ____________________________________________________________
+video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_data, raw_et) {
+  
+  if (is.null(subject_num)) {
+    subject_num <- unique(data$subject)
+  }
+  if (is.null(trial_num)) {
+    trial_num <- unique(data$trial)
+  }
+  
+  # Construct the background image file path
+
+  pattern <- paste0("*_trialnum_", trial_num, ".png")
+  
+  image_files <- list.files(path = background_image_path, 
+                           pattern = pattern,
+                           recursive = TRUE,  # search in subdirectories
+                           full.names = TRUE) # get full path
+  
+  # Take the first matching file (assuming there's only one per trial number)
+  image_path <- image_files[1]
+  image <- png::readPNG(image_path)
+  
+  heatmap_df <- data %>% 
+    filter(subject %in% subject_num) %>% 
+    filter(trial %in% trial_num)
+  
+  # do one trial, and sample timepoints every 50 rows
+  et_data <- subset(et_data, trial_id == heatmap_df$p_trial[heatmap_df$trial == trial_num])%>%
+                filter(row_number() %% 5 == 0)
+  
+  target_x = unique(heatmap_df$target_x)
+  target_y = unique(heatmap_df$target_y)
+  
+  # plot the graph
+  graph <- ggplot() +
+    annotation_custom(
+      rasterGrob(image, width = unit(1, "npc"), height = unit(1, "npc")), 
+      xmin = 0, xmax = 1920, ymin = 0, ymax = 1080
+    ) +
+    geom_point(data = et_data, aes(x = xp, y = yp), size = 5, color = "firebrick2") +
+    transition_reveal(along = time)+
+
+    scale_alpha(range = c(0, 0.8), guide = "none") +
+    scale_fill_gradient(low = "green", high = "red", guide = "none") +    
+    labs(title = "Fixation Heatmap") +
+    geom_rect(aes(xmin = 0, xmax = 1920, ymin = 0, ymax = 1080), 
+              fill = NA, color = "black", size = 1) +
+    geom_rect(data = heatmap_df,  
+              aes(xmin = target_x-20, xmax = target_x+20, 
+                  ymin = target_y-20, ymax = target_y+20), 
+              fill = NA, alpha = 0.2, color = "black", size = 1) +
+    annotate("text", x = target_x, y = target_y + 80, 
+             label = "target", size = 4, color = "black", fontface = "bold") +
+    scale_x_continuous(breaks = seq(0, 1920, by = 480), limits = c(0, 1920)) + 
+    scale_y_continuous(breaks = seq(0, 1080, by = 360), limits = c(0, 1080)) + 
+    theme_minimal() +  
+    theme(axis.line = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks = element_blank(),
+          axis.title.x = element_blank(),
+          axis.title.y = element_blank(),
+          legend.position = "none",
+          panel.background = element_blank(),
+          panel.border = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          plot.background = element_blank(),
+          panel.grid = element_blank(),
+          plot.title = element_text(hjust = 0.5)
+    )
+  #TODO: can't seem to change fps, maybe it's a gif limitation? also the dimensions look wrong on my screen
+    animate(graph,nframes = 400, fps = 100, duration = 4, height = 960, width = 540)      
+  return(graph)
+}
+
+```
+
+```{r video}
+
+video <- video_plot_function(cleaned_data_fv, 36, 25, trials_df, et_data)
 
 ```
 
