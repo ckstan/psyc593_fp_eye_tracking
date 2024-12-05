@@ -103,7 +103,6 @@ cleaned_data_search <- data_search %>%
 generate summary variables and plot
 
 ```{r trial summaries}
-
 calc_distance_function <- function(x1, y1, x2, y2) {
   sqrt((x2 - x1)^2 + (y2 - y1)^2)
 }
@@ -351,14 +350,15 @@ fixation_order_function <- function(data, subject_num, trial_num) {
 ```
 
 graph heatmap and fixations
-```{r graphs}
+```{r graphs, warning=FALSE}
 # if no input for subject_num, graph all subjects
 heatmap_graph <- heatmap_function(cleaned_data_fv, 36, trial_num = 25)
-#fixation_graph <- fixation_order_function(cleaned_data_fv, 1, 15)
+# fixation_graph <- fixation_order_function(cleaned_data_fv, 1, 15)
 
 heatmap_graph
 #fixation_graph
 ```
+
 ```{r video creation}
 library(eyelinker)
 library(MASS)
@@ -368,6 +368,7 @@ library(png)
 library(gganimate) # Animation
 library(ggthemes) # ggplot2 theme for maps
 library(ggimage) # Images in ggplot2 plots
+library(av)
 
 # read in data
 et_data <- read.asc(file.path(eyetracking_fv_data_path, "EXP1_freeview_36_2023_05_02_10_55.asc"), parse_all = TRUE)
@@ -460,23 +461,28 @@ video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_d
   
   # do one trial, and sample timepoints every 50 rows
   et_data <- subset(et_data, trial_id == heatmap_df$p_trial[heatmap_df$trial == trial_num])%>%
-                filter(row_number() %% 5 == 0)
+                filter(row_number() %% 5 == 0) %>%
+    group_by(trial_id) %>%
+    mutate(time = time - time[1]) %>%
+    mutate(time = as.numeric(time))
   
   target_x = unique(heatmap_df$target_x)
   target_y = unique(heatmap_df$target_y)
   
   # plot the graph
   graph <- ggplot() +
+    scale_x_continuous(breaks = seq(0, 1920, by = 480), limits = c(0, 1920)) + 
+    scale_y_continuous(breaks = seq(0, 1080, by = 360), limits = c(0, 1080)) +
     annotation_custom(
       rasterGrob(image, width = unit(1, "npc"), height = unit(1, "npc")), 
       xmin = 0, xmax = 1920, ymin = 0, ymax = 1080
     ) +
     geom_point(data = et_data, aes(x = xp, y = yp), size = 5, color = "firebrick2") +
-    transition_reveal(along = time)+
-
+    geom_text(data = et_data, aes(x = 960, y = 30, label = paste("Time:", time)),
+            size = 4, color = "black", fontface = "bold", hjust = 0.5) +
     scale_alpha(range = c(0, 0.8), guide = "none") +
     scale_fill_gradient(low = "green", high = "red", guide = "none") +    
-    labs(title = "Fixation Heatmap") +
+    ggtitle(paste("Fixation video for","trial",trial_num,"subject",subject_num)) +
     geom_rect(aes(xmin = 0, xmax = 1920, ymin = 0, ymax = 1080), 
               fill = NA, color = "black", size = 1) +
     geom_rect(data = heatmap_df,  
@@ -485,8 +491,6 @@ video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_d
               fill = NA, alpha = 0.2, color = "black", size = 1) +
     annotate("text", x = target_x, y = target_y + 80, 
              label = "target", size = 4, color = "black", fontface = "bold") +
-    scale_x_continuous(breaks = seq(0, 1920, by = 480), limits = c(0, 1920)) + 
-    scale_y_continuous(breaks = seq(0, 1080, by = 360), limits = c(0, 1080)) + 
     theme_minimal() +  
     theme(axis.line = element_blank(),
           axis.text.x = element_blank(),
@@ -502,18 +506,26 @@ video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_d
           plot.background = element_blank(),
           panel.grid = element_blank(),
           plot.title = element_text(hjust = 0.5)
+    ) +
+    transition_reveal(along = time)
+  
+  # plot.margin = margin(t = 10, r = 10, b = 100, l = 10)
+    video <- animate(graph, nframes = 400, fps = 100, width = 6, height = 4, 
+      units = "in", 
+      res = 100,
+      end_pause = 50
     )
-  #TODO: can't seem to change fps, maybe it's a gif limitation? also the dimensions look wrong on my screen
-    animate(graph,nframes = 400, fps = 100, duration = 4, height = 960, width = 540)      
-  return(graph)
+
+  anim_save("video.mp4")
+  
+  return(video)
 }
 
 ```
 
-```{r video}
-
+```{r video_rendering}
 video <- video_plot_function(cleaned_data_fv, 36, 25, trials_df, et_data)
-
+video
 ```
 
 
