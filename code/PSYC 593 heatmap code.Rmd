@@ -21,9 +21,11 @@ docs_path <- here::here("doc")           # Using here
 data_path <- file.path(here_path, "data")
 raw_data_path <- file.path(data_path, "raw")
 eyetracking_fv_data_path <- file.path(raw_data_path, "howard_dataset","eye_tracking", "freeview")
+eyetracking_search_data_path <- file.path(raw_data_path, "howard_dataset","eye_tracking", "search")
 processed_data_path <- file.path(data_path, "processed")
 figures_path <- file.path(here_path, "results","figures")
 heatmaps_path <- file.path(here_path, "results","heatmaps")
+videos_path <- file.path(here_path, "results", "videos")
 background_image_path <- file.path(raw_data_path, "howard_dataset", "screenshots", "exp1")
 
 #read in raw file
@@ -107,8 +109,47 @@ calc_distance_function <- function(x1, y1, x2, y2) {
   sqrt((x2 - x1)^2 + (y2 - y1)^2)
 }
 
+# https://raw.githubusercontent.com/koundy/ggplot_theme_Publication/master/ggplot_theme_Publication-2.R
+
+theme_Publication <- function(base_size = 14, base_family = "sans") {
+  library(grid)
+  library(ggthemes)
+  (theme_foundation(base_size = base_size, base_family = base_family)
+  + theme(
+      plot.title = element_text(
+        face = "bold",
+        size = rel(1.2), hjust = 0.5, margin = margin(0, 0, 20, 0)
+      ),
+      text = element_text(),
+      panel.background = element_rect(colour = NA),
+      plot.background = element_rect(colour = NA),
+      panel.border = element_rect(colour = NA),
+      axis.title = element_text(face = "bold", size = rel(1)),
+      axis.title.y = element_text(angle = 90, vjust = 2),
+      axis.title.x = element_text(vjust = -0.2),
+      axis.text = element_text(),
+      axis.line.x = element_line(colour = "black"),
+      axis.line.y = element_line(colour = "black"),
+      axis.ticks = element_line(),
+      panel.grid.major = element_line(colour = "#f0f0f0"),
+      panel.grid.minor = element_blank(),
+      legend.key = element_rect(colour = NA),
+      legend.position = "bottom",
+      legend.direction = "horizontal",
+      legend.box = "vetical",
+      legend.key.size = unit(0.5, "cm"),
+      # legend.margin = unit(0, "cm"),
+      legend.title = element_text(face = "italic"),
+      plot.margin = unit(c(10, 5, 5, 5), "mm"),
+      strip.background = element_rect(colour = "#f0f0f0", fill = "#f0f0f0"),
+      strip.text = element_text(face = "bold")
+    ))
+}
+
 
 generate_summaries_function <- function(data, subject = NULL, trial = NULL) {
+  
+  #TODO: need to match trials across experiments using original trial num
   
   if (is.null(subject)) {
     subject <- unique(data$subject)
@@ -116,20 +157,20 @@ generate_summaries_function <- function(data, subject = NULL, trial = NULL) {
   if (is.null(trial)) {
     trial <- unique(data$trial)
   }
-  
-
+ 
   data <- data %>% 
     mutate(fix_num_value = as.numeric(gsub("f", "", fix_num)))
   
-  average_fixations_per_sub <- data %>%
-    group_by(subject) %>%
-    summarise(avg_fix_sub = mean(max(fix_num_value)))%>%
-    ungroup()
-  
-  average_fixations_per_trial <- data %>%
-    group_by(trial) %>%
-    summarise(avg_fix_trial = mean(max(fix_num_value))) %>%
-    ungroup()
+  # average_fixations_per_sub <- data %>%
+  #   group_by(subject) %>%
+  #   summarise(avg_fix_sub = mean(max(fix_num_value)))%>%
+  # 
+  # print(average_fixations_per_sub)
+  # 
+  # average_fixations_per_trial <- data %>%
+  #   group_by(trial) %>%
+  #   summarise(avg_fix_trial = mean(max(fix_num_value)))
+
   
   sacc_amps <- data %>%
     arrange(trial, subject, fix_num_value) %>%
@@ -144,37 +185,30 @@ generate_summaries_function <- function(data, subject = NULL, trial = NULL) {
   sacc_summaries_trial <- sacc_amps %>% 
     group_by(trial) %>%
     summarise(avg_sacc_amp = mean(total_distance)) 
-  
-  # print("\nAverage fixations by trial:")
-  # print(average_fixations_per_trial)
-  # 
-  # print("\nAverage fixations by subject:")
-  # print(average_fixations_per_sub)
-  # 
-  # print("\nAverage saccade amplitude by trial:")
-  # print(sacc_summaries_trial)
-  # 
-  # print("\nAverage saccade amplitude by subject:")
-  # print(sacc_summaries_sub)
 
   
-  fix_sub_graph <- ggplot(data = average_fixations_per_sub, aes(x=avg_fix_sub))+
-    geom_histogram(binwidth = 1)
+  # fix_sub_graph <- ggplot(data = average_fixations_per_sub, aes(x=avg_fix_sub))+
+  #   geom_histogram(binwidth = 1) + theme_Publication()+ ggtitle(paste("Average number of fixations subjects made"))+
+  # labs(x = "Number of fixations", y = "# of subjects")
+  # 
+  # fix_trial_graph <- ggplot(data = average_fixations_per_trial, aes(x=avg_fix_trial))+
+  #   geom_histogram(binwidth = 1) + theme_Publication() + ggtitle(paste("Average number of fixations made during a trial"))+
+  # labs(x = "Number of fixations")
   
-  fix_trial_graph <- ggplot(data = average_fixations_per_trial, aes(x=avg_fix_trial))+
-    geom_histogram(binwidth = 1)
+  #TODO: these are currently just for all trials
   
   sacc_sub_graph <- ggplot(data = sacc_summaries_sub, aes(x=avg_sacc_amp))+
-    geom_density()
+    geom_density() + theme_Publication() + ggtitle(paste("Average saccade amplitude for subject" , subject))+
+  labs(x = "Saccade Amplitude")
   
   sacc_trial_graph <- ggplot(data = sacc_summaries_trial, aes(x=avg_sacc_amp))+
-    geom_density()
+    geom_density() + theme_Publication() + ggtitle(paste("Average saccade amplitude during trial",trial))+
+  labs(x = "Saccade Amplitude")
   
-  print(fix_sub_graph)
-  print(fix_trial_graph)
-  print(sacc_trial_graph)
+  # print(fix_sub_graph)
+  # print(fix_trial_graph)
   print(sacc_sub_graph)
-
+  print(sacc_trial_graph)
 }
 
 fv_graphs <- generate_summaries_function(cleaned_data_fv)
@@ -188,10 +222,10 @@ combined_graph <- ggplot() +
   geom_density(data = s_graphs$data, aes(x = avg_sacc_amp, color = "search"), alpha = 0.5) +
   scale_color_manual(values = c("freeview" = "blue", "search" = "red"),
                      name = "Data Source") +
-  labs(x = "Average Saccade Amplitude",
-       y = "Density",
-       title = "Comparison of Saccade Amplitude Distributions") +
-  theme_minimal()
+  labs(x = "Average Saccade Amplitude")+
+  theme(panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),axis.text.y = element_blank()) + 
+  ggtitle(paste("Average saccade amplitude during trial",fv_graphs$trial))
 print(combined_graph)
 
 ```
@@ -353,7 +387,7 @@ graph heatmap and fixations
 ```{r graphs, warning=FALSE}
 # if no input for subject_num, graph all subjects
 heatmap_graph <- heatmap_function(cleaned_data_fv, 36, trial_num = 25)
-# fixation_graph <- fixation_order_function(cleaned_data_fv, 1, 15)
+#fixation_graph <- fixation_order_function(cleaned_data_fv, 1, 20)
 
 heatmap_graph
 #fixation_graph
@@ -372,13 +406,18 @@ library(av)
 
 # read in data
 et_data <- read.asc(file.path(eyetracking_fv_data_path, "EXP1_freeview_36_2023_05_02_10_55.asc"), parse_all = TRUE)
+search_data <- read.asc(file.path(eyetracking_search_data_path, "EXP1_search_1_2023_03_29_16_02.asc"), parse_all = TRUE)
 
 #subset messages and denote trial boundaries
 msgs <- et_data$msg
+msg2 <- search_data$msg
 
 # first 12 pairs are practice trials, so block > 24
 trial_bounds <- msgs %>% 
                   dplyr::filter((text == "stimuli_onset" | text == "freeview_timeup") & block > 24) 
+
+search_trial_bounds <- msg2 %>% 
+                  dplyr::filter((text == "stimuli_onset" | text %in% c("left_pressed", "right_pressed")) & block > 24) 
 
 #assign trial_id to original raw data, and drop info outside of trials, 
 #e.g. we do a gaze contingency check in the beginning of every trial 
@@ -414,13 +453,49 @@ make_trials <- function(eyetrack_data, bounds) {
   return(trials)
   
 }
+search_make_trials <- function(eyetrack_data, bounds) {
+  
+  # First pivot wider and get response columns
+  bounds <- bounds %>%
+              group_by(block) %>%
+              pivot_wider(names_from = text, values_from = time) %>%
+              ungroup() %>%
+              mutate(id = row_number()) %>%
+              # Create a response_time column that takes either left or right press
+              mutate(response_time = coalesce(left_pressed, right_pressed)) %>%
+              dplyr::select(id, stimuli_onset, response_time)
+  
+  trials <- eyetrack_data %>%
+    mutate(trial_id = NA_integer_)
+  
+  for(i in 1:nrow(bounds)) {
+    
+    # Use response_time instead of freeview_timeup
+    trials <- trials %>%
+      mutate(
+        trial_id = ifelse(
+          time >= bounds$stimuli_onset[i] & 
+          time <= bounds$response_time[i],
+          bounds$id[i],
+          trial_id
+        )
+      )
+  }
+  trials <- trials %>%
+              drop_na(trial_id)
+  
+  return(trials)
+  
+}
 
 # make trial dataframe 
 trials_df <- make_trials(et_data$raw, trial_bounds) %>%
               dplyr::select(time, xp, yp, trial_id) %>%
               mutate (yp = 1080-yp)
               
-
+search_trials_df <- search_make_trials(search_data$raw, search_trial_bounds) %>%
+              dplyr::select(time, xp, yp, trial_id) %>%
+              mutate (yp = 1080-yp)
 
 
 
@@ -433,7 +508,7 @@ trials_df <- make_trials(et_data$raw, trial_bounds) %>%
 
 
 # now make a video for a particular trial ____________________________________________________________
-video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_data, raw_et) {
+video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_data) {
   
   if (is.null(subject_num)) {
     subject_num <- unique(data$subject)
@@ -459,7 +534,7 @@ video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_d
     filter(subject %in% subject_num) %>% 
     filter(trial %in% trial_num)
   
-  # do one trial, and sample timepoints every 50 rows
+  # do one trial, and sample timepoints every 5 rows
   et_data <- subset(et_data, trial_id == heatmap_df$p_trial[heatmap_df$trial == trial_num])%>%
                 filter(row_number() %% 5 == 0) %>%
     group_by(trial_id) %>%
@@ -482,7 +557,7 @@ video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_d
             size = 4, color = "black", fontface = "bold", hjust = 0.5) +
     scale_alpha(range = c(0, 0.8), guide = "none") +
     scale_fill_gradient(low = "green", high = "red", guide = "none") +    
-    ggtitle(paste("Fixation video for","trial",trial_num,"subject",subject_num)) +
+    ggtitle(paste("Eye movement video for","trial",trial_num,"subject",subject_num)) +
     geom_rect(aes(xmin = 0, xmax = 1920, ymin = 0, ymax = 1080), 
               fill = NA, color = "black", size = 1) +
     geom_rect(data = heatmap_df,  
@@ -510,22 +585,31 @@ video_plot_function <- function(data, subject_num = NULL, trial_num = NULL, et_d
     transition_reveal(along = time)
   
   # plot.margin = margin(t = 10, r = 10, b = 100, l = 10)
-    video <- animate(graph, nframes = 400, fps = 100, width = 6, height = 4, 
+    video <- animate(graph, width = 6, height = 4, 
       units = "in", 
       res = 100,
       end_pause = 50
     )
+  
 
-  anim_save("video.mp4")
+    
+  anim_save(filename = "animated.gif", path = videos_path)
   
   return(video)
 }
 
+
 ```
 
 ```{r video_rendering}
-video <- video_plot_function(cleaned_data_fv, 36, 25, trials_df, et_data)
+video <- video_plot_function(cleaned_data_fv, 36, 25, trials_df)
 video
+```
+
+
+```{r video_rendering 2}
+video2 <- video_plot_function(cleaned_data_search, 1, 25, search_trials_df)
+video2
 ```
 
 
